@@ -4,6 +4,10 @@
 
 > Sistema de agentes de IA conversacional para operações de cartão de crédito, desenvolvido com LangGraph, LangChain e FastAPI.
 
+## Arquitetura
+
+![Arquitetura do Sistema](docs/arquitetura.png)
+
 ## Visão Geral
 
 Este projeto implementa um **assistente digital especializado em cartões de crédito**, composto por agentes de IA orquestrados via grafo de estados. O sistema identifica automaticamente a intenção do usuário e direciona a conversa para o agente mais adequado — fatura, limite ou transações — buscando dados reais via API REST.
