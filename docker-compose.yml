@@ -1,0 +1,46 @@
+version: "3.9"
+
+services:
+  assistente:
+    build:
+      context: .
+      target: producao
+    ports:
+      - "8000:8000"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      MODELO_LLM: gpt-4o
+      URL_API_CARTOES: http://mock-cartoes:9090
+      REDIS_URL: redis://redis:6379
+      NIVEL_LOG: INFO
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health').raise_for_status()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  mock-cartoes:
+    image: mockserver/mockserver:latest
+    ports:
+      - "9090:9090"
+    environment:
+      MOCKSERVER_INITIALIZATION_JSON_PATH: /config/mock-cartoes.json
+    volumes:
+      - ./testes/mocks:/config
+    restart: unless-stopped

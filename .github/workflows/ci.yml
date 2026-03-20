@@ -1,0 +1,97 @@
+name: CI — Assistente de Cartões IA
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  qualidade:
+    name: Lint e Tipagem
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+
+      - name: Verificar formatação e lint (ruff)
+        run: ruff check . && ruff format --check .
+
+      - name: Verificar tipagem estática (mypy)
+        run: mypy agentes/ modelos/ servicos/ ferramentas/ avaliacao/
+
+  testes:
+    name: Testes Unitários e Integração
+    runs-on: ubuntu-latest
+    needs: qualidade
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+
+      - name: Executar testes com cobertura
+        env:
+          OPENAI_API_KEY: sk-test-placeholder
+          REDIS_URL: redis://localhost:6379
+        run: |
+          pytest testes/ -v \
+            --tb=short \
+            --cov=agentes --cov=servicos --cov=ferramentas --cov=avaliacao \
+            --cov-report=term-missing \
+            --cov-fail-under=80
+
+      - name: Publicar relatório de cobertura
+        uses: codecov/codecov-action@v4
+        if: always()
+
+  docker:
+    name: Build da Imagem Docker
+    runs-on: ubuntu-latest
+    needs: testes
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build da imagem
+        run: docker build --target producao -t assistente-cartoes:${{ github.sha }} .
+
+      - name: Verificar health check da imagem
+        run: |
+          docker run -d --name teste-assistente \
+            -e OPENAI_API_KEY=sk-test \
+            -p 8000:8000 \
+            assistente-cartoes:${{ github.sha }}
+          sleep 5
+          docker inspect --format='{{.State.Health.Status}}' teste-assistente
+          docker stop teste-assistente
